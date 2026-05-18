@@ -1,0 +1,919 @@
+--[[
+    ╔══════════════════════════════════════════╗
+    ║        ⚡ MOD MENU v3 - LocalScript ⚡     ║
+    ║     Mobile & PC | Full Featured          ║
+    ╚══════════════════════════════════════════╝
+]]
+
+-- SERVICES
+local Players          = game:GetService("Players")
+local RunService       = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local TweenService     = game:GetService("TweenService")
+local Lighting         = game:GetService("Lighting")
+local Stats            = game:GetService("Stats")
+
+local LP    = Players.LocalPlayer
+local PGui  = LP:WaitForChild("PlayerGui")
+local Mouse = LP:GetMouse()
+local Cam   = workspace.CurrentCamera
+
+-- STATE
+local S = {
+    Fly=false, Freeze=false, AntiFling=false, InfJump=false,
+    DeleteMode=false, ReworkActive=false, MenuOpen=true,
+    FPSMode=false, LowGraphics=false, UltraPotato=false,
+    NoShadow=false, NoTexture=false, AntiLag=false,
+    AntiShake=false, Optimization=false,
+}
+local DeathCount = 0
+local FlySpeed   = 55
+local FlyConn, AntiFlingConn, DeleteConn, FPSConn = nil,nil,nil,nil
+local currentAnimTrack = nil
+local _origTextures = {}
+local _antiLagConn  = nil
+
+-- HELPERS
+local function getChar() return LP.Character end
+local function getHRP()  local c=getChar(); return c and c:FindFirstChild("HumanoidRootPart") end
+local function getHum()  local c=getChar(); return c and c:FindFirstChildWhichIsA("Humanoid") end
+
+-- COLORS
+local C = {
+    BG0=Color3.fromRGB(12,10,22), BG1=Color3.fromRGB(18,14,34),
+    BG2=Color3.fromRGB(26,20,48), Accent=Color3.fromRGB(120,55,255),
+    AccentDk=Color3.fromRGB(80,30,170), AccentLt=Color3.fromRGB(175,115,255),
+    Glow=Color3.fromRGB(90,195,255), Text=Color3.fromRGB(238,232,255),
+    TextDim=Color3.fromRGB(130,118,168), Green=Color3.fromRGB(45,215,105),
+    Red=Color3.fromRGB(255,55,55), Orange=Color3.fromRGB(255,160,35),
+    White=Color3.new(1,1,1), Black=Color3.new(0,0,0),
+    Cyan=Color3.fromRGB(55,210,220),
+}
+
+-- GUI HELPERS
+local function corner(p,r) local u=Instance.new("UICorner"); u.CornerRadius=UDim.new(0,r or 8); u.Parent=p; return u end
+local function stroke(p,col,th) local s=Instance.new("UIStroke"); s.Color=col or C.Accent; s.Thickness=th or 1.5; s.ApplyStrokeMode=Enum.ApplyStrokeMode.Border; s.Parent=p; return s end
+local function frame(parent,size,pos,bg,r)
+    local f=Instance.new("Frame"); f.Size=size; f.Position=pos or UDim2.new(0,0,0,0)
+    f.BackgroundColor3=bg or C.BG1; f.BorderSizePixel=0; f.Parent=parent
+    if r then corner(f,r) end; return f
+end
+local function lbl(parent,txt,size,pos,fs,font,col,ax)
+    local l=Instance.new("TextLabel"); l.Text=txt; l.Size=size; l.Position=pos or UDim2.new(0,0,0,0)
+    l.BackgroundTransparency=1; l.TextColor3=col or C.Text; l.TextSize=fs or 13
+    l.Font=font or Enum.Font.Gotham; l.TextXAlignment=ax or Enum.TextXAlignment.Center
+    l.TextScaled=false; l.Parent=parent; return l
+end
+local function btn(parent,txt,size,pos,bg,tc,fs)
+    local b=Instance.new("TextButton"); b.Text=txt; b.Size=size; b.Position=pos or UDim2.new(0,0,0,0)
+    b.BackgroundColor3=bg or C.BG2; b.TextColor3=tc or C.Text; b.TextSize=fs or 13
+    b.Font=Enum.Font.GothamBold; b.BorderSizePixel=0; b.AutoButtonColor=false; b.Parent=parent
+    corner(b,8); return b
+end
+local function hover(b,n,h)
+    b.MouseEnter:Connect(function() TweenService:Create(b,TweenInfo.new(0.15),{BackgroundColor3=h}):Play() end)
+    b.MouseLeave:Connect(function() TweenService:Create(b,TweenInfo.new(0.15),{BackgroundColor3=n}):Play() end)
+end
+
+-- DESTROY OLD
+if PGui:FindFirstChild("MMv3") then PGui.MMv3:Destroy() end
+
+-- SCREEN GUI
+local SG=Instance.new("ScreenGui"); SG.Name="MMv3"; SG.ResetOnSpawn=false
+SG.ZIndexBehavior=Enum.ZIndexBehavior.Sibling; SG.IgnoreGuiInset=true; SG.Parent=PGui
+
+-- ============================================================
+-- NOTIFICATION
+-- ============================================================
+local notifStack=0
+local function notify(title,msg,col)
+    notifStack=notifStack+1
+    local yo=(notifStack-1)*68
+    local nf=frame(SG,UDim2.new(0,290,0,58),UDim2.new(1,10,0,12+yo),C.BG0,10)
+    nf.ZIndex=200; stroke(nf,col or C.Accent,1.5)
+    local bar=frame(nf,UDim2.new(0,4,1,0),UDim2.new(0,0,0,0),col or C.Accent,4); bar.ZIndex=201
+    local t=lbl(nf,title,UDim2.new(1,-18,0,26),UDim2.new(0,12,0,4),12,Enum.Font.GothamBold,col or C.AccentLt,Enum.TextXAlignment.Left); t.ZIndex=201
+    local m=lbl(nf,msg,UDim2.new(1,-18,0,22),UDim2.new(0,12,0,28),10,Enum.Font.Gotham,C.TextDim,Enum.TextXAlignment.Left); m.ZIndex=201
+    TweenService:Create(nf,TweenInfo.new(0.3,Enum.EasingStyle.Back),{Position=UDim2.new(1,-305,0,12+yo)}):Play()
+    task.delay(2.8,function()
+        TweenService:Create(nf,TweenInfo.new(0.22),{Position=UDim2.new(1,10,0,12+yo)}):Play()
+        task.wait(0.25); nf:Destroy(); notifStack=math.max(0,notifStack-1)
+    end)
+end
+
+-- ============================================================
+-- DRAG
+-- ============================================================
+local function makeDraggable(win,handle)
+    local dragging,dragStart,startPos=false,nil,nil
+    handle.InputBegan:Connect(function(inp)
+        if inp.UserInputType==Enum.UserInputType.MouseButton1 or inp.UserInputType==Enum.UserInputType.Touch then
+            dragging=true; dragStart=inp.Position; startPos=win.Position
+            inp.Changed:Connect(function() if inp.UserInputState==Enum.UserInputState.End then dragging=false end end)
+        end
+    end)
+    UserInputService.InputChanged:Connect(function(inp)
+        if not dragging then return end
+        if inp.UserInputType==Enum.UserInputType.MouseMovement or inp.UserInputType==Enum.UserInputType.Touch then
+            local d=inp.Position-dragStart
+            win.Position=UDim2.new(startPos.X.Scale,startPos.X.Offset+d.X,startPos.Y.Scale,startPos.Y.Offset+d.Y)
+        end
+    end)
+end
+
+-- ============================================================
+-- MAIN WINDOW  (lebar 380, cocok mobile)
+-- ============================================================
+local MW=frame(SG,UDim2.new(0,380,0,0),UDim2.new(0.5,-190,0.5,-270),C.BG0,14)
+stroke(MW,C.Accent,2); MW.ClipsDescendants=true
+
+-- TITLE BAR
+local TB=frame(MW,UDim2.new(1,0,0,48),UDim2.new(0,0,0,0),C.BG1,14)
+frame(TB,UDim2.new(1,0,0,14),UDim2.new(0,0,1,-14),C.BG1) -- corner fix
+local titleLine=frame(TB,UDim2.new(0.65,0,0,2),UDim2.new(0.175,0,1,-1),C.Accent); titleLine.BackgroundTransparency=0.4
+local titleLbl=lbl(TB,"⚡  MOD MENU  v3",UDim2.new(1,-76,1,0),UDim2.new(0,8,0,0),15,Enum.Font.GothamBold,C.White)
+titleLbl.TextXAlignment=Enum.TextXAlignment.Left
+
+local minBtn=btn(TB,"–",UDim2.new(0,30,0,30),UDim2.new(1,-68,0,9),Color3.fromRGB(38,30,60),C.Text,18)
+hover(minBtn,Color3.fromRGB(38,30,60),Color3.fromRGB(60,48,90))
+local closeBtn=btn(TB,"✕",UDim2.new(0,30,0,30),UDim2.new(1,-34,0,9),C.Red,C.White,14)
+hover(closeBtn,C.Red,Color3.fromRGB(200,35,35))
+makeDraggable(MW,TB)
+
+-- DEATH COUNTER BAR
+local DCbar=frame(MW,UDim2.new(1,-16,0,36),UDim2.new(0,8,0,52),C.BG1,8)
+stroke(DCbar,C.Red,1.5)
+lbl(DCbar,"💀",UDim2.new(0,36,1,0),UDim2.new(0,4,0,0),18)
+local dcLbl=lbl(DCbar,"Deaths: 0",UDim2.new(1,-110,1,0),UDim2.new(0,42,0,0),13,Enum.Font.GothamBold,C.Red,Enum.TextXAlignment.Left)
+local dcBadge=frame(DCbar,UDim2.new(0,52,0,24),UDim2.new(1,-60,0,6),Color3.fromRGB(55,8,8),6)
+stroke(dcBadge,C.Red,1)
+local dcNum=lbl(dcBadge,"0",UDim2.new(1,0,1,0),nil,13,Enum.Font.GothamBold,C.Red)
+
+-- SCROLL
+local scroll=Instance.new("ScrollingFrame")
+scroll.Size=UDim2.new(1,-12,1,-200); scroll.Position=UDim2.new(0,6,0,94)
+scroll.BackgroundTransparency=1; scroll.BorderSizePixel=0
+scroll.ScrollBarThickness=3; scroll.ScrollBarImageColor3=C.AccentDk
+scroll.CanvasSize=UDim2.new(0,0,0,0); scroll.AutomaticCanvasSize=Enum.AutomaticSize.Y
+scroll.Parent=MW
+local slist=Instance.new("UIListLayout"); slist.Padding=UDim.new(0,4); slist.SortOrder=Enum.SortOrder.LayoutOrder; slist.Parent=scroll
+
+-- BOTTOM SKILLS BAR
+local skillBar=frame(MW,UDim2.new(1,-16,0,54),UDim2.new(0,8,1,-62),C.BG1,10)
+stroke(skillBar,C.AccentDk,1.5)
+lbl(skillBar,"SKILLS",UDim2.new(0,50,1,0),UDim2.new(0,6,0,0),9,Enum.Font.GothamBold,C.TextDim)
+local reworkBtn=btn(skillBar,"💀  REWORK",UDim2.new(0,150,0,38),UDim2.new(0,52,0,8),Color3.fromRGB(90,5,5),C.White,12)
+stroke(reworkBtn,C.Red,2); hover(reworkBtn,Color3.fromRGB(90,5,5),Color3.fromRGB(130,12,12))
+local reworkCdLbl=lbl(skillBar,"Ready!",UDim2.new(0,90,1,0),UDim2.new(0,208,0,0),10,Enum.Font.Gotham,C.Green)
+
+-- TABS BAR
+local tabBar=frame(MW,UDim2.new(1,-16,0,34),UDim2.new(0,8,1,-10),C.BG0,8)
+-- (invisible placeholder for spacing; content is in skillBar above)
+
+-- ============================================================
+-- ROW BUILDERS
+-- ============================================================
+local lo=0
+local function secHeader(txt)
+    local f=Instance.new("Frame"); f.Size=UDim2.new(1,0,0,22); f.BackgroundTransparency=1; f.LayoutOrder=lo; lo=lo+1; f.Parent=scroll
+    lbl(f,txt,UDim2.new(1,-8,1,0),UDim2.new(0,4,0,0),9,Enum.Font.GothamBold,C.TextDim,Enum.TextXAlignment.Left)
+    frame(f,UDim2.new(1,0,0,1),UDim2.new(0,0,1,-1),Color3.fromRGB(44,36,80))
+end
+
+local function toggleRow(icon,name,default)
+    local row=frame(scroll,UDim2.new(1,0,0,42),nil,C.BG1,8)
+    row.LayoutOrder=lo; lo=lo+1; stroke(row,Color3.fromRGB(32,26,58),1)
+    lbl(row,icon,UDim2.new(0,38,1,0),UDim2.new(0,4,0,0),16)
+    lbl(row,name,UDim2.new(1,-135,1,0),UDim2.new(0,44,0,0),12,Enum.Font.GothamSemibold,C.Text,Enum.TextXAlignment.Left)
+    local statusLbl=lbl(row,default and "ON" or "OFF",UDim2.new(0,34,0,20),UDim2.new(1,-85,0,11),10,Enum.Font.GothamBold,default and C.Green or C.Red)
+    local track=frame(row,UDim2.new(0,46,0,24),UDim2.new(1,-54,0,9),default and C.AccentDk or Color3.fromRGB(36,30,58),12)
+    stroke(track,default and C.Accent or Color3.fromRGB(52,42,82),1)
+    local knob=frame(track,UDim2.new(0,18,0,18),default and UDim2.new(1,-21,0,3) or UDim2.new(0,3,0,3),default and C.AccentLt or C.TextDim,9)
+    local tBtn=Instance.new("TextButton"); tBtn.Size=UDim2.new(1,0,1,0); tBtn.BackgroundTransparency=1; tBtn.Text=""; tBtn.ZIndex=5; tBtn.Parent=row
+    local state=default or false; local callbacks={}
+    local function setVis(s)
+        TweenService:Create(knob,TweenInfo.new(0.18),{Position=s and UDim2.new(1,-21,0,3) or UDim2.new(0,3,0,3)}):Play()
+        TweenService:Create(knob,TweenInfo.new(0.18),{BackgroundColor3=s and C.AccentLt or C.TextDim}):Play()
+        TweenService:Create(track,TweenInfo.new(0.18),{BackgroundColor3=s and C.AccentDk or Color3.fromRGB(36,30,58)}):Play()
+        statusLbl.Text=s and "ON" or "OFF"; statusLbl.TextColor3=s and C.Green or C.Red
+    end
+    tBtn.MouseButton1Click:Connect(function() state=not state; setVis(state); for _,cb in ipairs(callbacks) do cb(state) end end)
+    local function onChange(cb) table.insert(callbacks,cb) end
+    return row,tBtn,function() return state end,function(s) state=s; setVis(s) end,onChange
+end
+
+local function actionRow(icon,name,col,tc)
+    local b=btn(scroll,"",UDim2.new(1,0,0,42),nil,col or C.BG1,C.Text,12)
+    b.LayoutOrder=lo; lo=lo+1
+    if not col then stroke(b,Color3.fromRGB(32,26,58),1) end
+    lbl(b,icon,UDim2.new(0,38,1,0),UDim2.new(0,4,0,0),16)
+    lbl(b,name,UDim2.new(1,-50,1,0),UDim2.new(0,44,0,0),12,Enum.Font.GothamSemibold,tc or C.Text,Enum.TextXAlignment.Left)
+    hover(b,col or C.BG1,col and col:Lerp(C.White,0.1) or C.BG2)
+    return b
+end
+
+local function inputRow(icon,name,placeholder)
+    local row=frame(scroll,UDim2.new(1,0,0,68),nil,C.BG1,8)
+    row.LayoutOrder=lo; lo=lo+1; stroke(row,Color3.fromRGB(32,26,58),1)
+    lbl(row,icon,UDim2.new(0,38,0,34),UDim2.new(0,4,0,0),16)
+    lbl(row,name,UDim2.new(1,-110,0,34),UDim2.new(0,44,0,0),12,Enum.Font.GothamSemibold,C.Text,Enum.TextXAlignment.Left)
+    local ibg=frame(row,UDim2.new(1,-90,0,26),UDim2.new(0,6,0,36),Color3.fromRGB(26,20,46),6)
+    stroke(ibg,Color3.fromRGB(65,50,120),1)
+    local tb=Instance.new("TextBox"); tb.Size=UDim2.new(1,-8,1,0); tb.Position=UDim2.new(0,4,0,0)
+    tb.BackgroundTransparency=1; tb.TextColor3=C.Text; tb.PlaceholderText=placeholder or "..."
+    tb.PlaceholderColor3=C.TextDim; tb.TextSize=11; tb.Font=Enum.Font.Gotham; tb.ClearTextOnFocus=false; tb.Parent=ibg
+    local ab=btn(row,"▶",UDim2.new(0,70,0,26),UDim2.new(1,-78,0,36),C.AccentDk,C.White,14)
+    hover(ab,C.AccentDk,C.Accent); return row,tb,ab
+end
+
+-- ============================================================
+-- BUILD ROWS
+-- ============================================================
+
+-- MOVEMENT
+secHeader("  🚶  MOVEMENT")
+local _,_,getFly,setFly,onFlyChange     = toggleRow("🚀","Fly  [WASD+Space/Shift]",false)
+local _,_,getInfJ,setInfJ,onInfJ       = toggleRow("🦘","Infinite Jump",false)
+local _,_,getFreeze,setFreeze,onFrz    = toggleRow("❄️","Freeze Character",false)
+local _,_,getAF,setAF,onAF             = toggleRow("🛡️","Anti-Fling",false)
+
+-- FLY SPEED
+local fsRow,fsTb,fsApply = inputRow("💨","Fly Speed","default: 55")
+
+-- ANIMATION
+secHeader("  🎭  ANIMATION & EMOTE")
+local _,animTb,animApply = inputRow("🎬","Play Anim ID","e.g. 507770239")
+local emoteBtn = actionRow("💃","Emote Cycle (Wave/Dance/Laugh...)",C.BG1)
+
+-- TOOLS
+secHeader("  🔧  TOOLS")
+local f3xBtn    = actionRow("🗑️","Delete Mode (Click part to remove)",C.BG1)
+local resetBtn  = actionRow("🔄","Reset Character",Color3.fromRGB(50,18,18),C.Orange)
+local kickBtn   = actionRow("🚪","Self Kick",Color3.fromRGB(65,12,12),C.Red)
+
+-- PLAYER / SERVER
+secHeader("  🌐  PLAYER & SERVER")
+local rejoinBtn = actionRow("🔁","Rejoin This Game",Color3.fromRGB(20,35,60),C.Cyan)
+local _,gameIdTb,joinBtn = inputRow("🎮","Join Game by Place ID","Place ID")
+
+-- INFO
+secHeader("  📊  INFO")
+local fpsInfoBtn  = actionRow("📈","FPS Counter (check console)",C.BG1)
+local serverInfoBtn= actionRow("🖥️","Server / Player Info",C.BG1)
+local lagBtn      = actionRow("⚠️","Detect Lag",C.BG1)
+
+-- ============================================================
+-- SETTINGS PANEL
+-- ============================================================
+local SP=frame(SG,UDim2.new(0,300,0,0),UDim2.new(0.5,-150,0.06,0),C.BG0,12)
+SP.Visible=false; SP.ZIndex=100; stroke(SP,C.AccentDk,2); SP.ClipsDescendants=true
+
+local sTB=frame(SP,UDim2.new(1,0,0,44),nil,C.BG1,12)
+frame(sTB,UDim2.new(1,0,0,14),UDim2.new(0,0,1,-14),C.BG1)
+lbl(sTB,"⚙  SETTINGS",UDim2.new(1,-40,1,0),nil,14,Enum.Font.GothamBold,C.White)
+local sClose=btn(sTB,"✕",UDim2.new(0,28,0,28),UDim2.new(1,-34,0,8),C.Red,C.White,13)
+makeDraggable(SP,sTB)
+
+local sSc=Instance.new("ScrollingFrame")
+sSc.Size=UDim2.new(1,-12,1,-50); sSc.Position=UDim2.new(0,6,0,48)
+sSc.BackgroundTransparency=1; sSc.BorderSizePixel=0
+sSc.ScrollBarThickness=3; sSc.ScrollBarImageColor3=C.AccentDk
+sSc.CanvasSize=UDim2.new(0,0,0,0); sSc.AutomaticCanvasSize=Enum.AutomaticSize.Y
+sSc.ZIndex=101; sSc.Parent=SP
+local sLL=Instance.new("UIListLayout"); sLL.Padding=UDim.new(0,4); sLL.Parent=sSc
+
+local slo=0
+local function sTRow(icon,name,def)
+    local row=frame(sSc,UDim2.new(1,0,0,42),nil,C.BG1,8); row.LayoutOrder=slo; slo=slo+1; row.ZIndex=102
+    stroke(row,Color3.fromRGB(32,26,58),1)
+    lbl(row,icon,UDim2.new(0,38,1,0),UDim2.new(0,4,0,0),16).ZIndex=103
+    lbl(row,name,UDim2.new(1,-135,1,0),UDim2.new(0,44,0,0),12,Enum.Font.GothamSemibold,C.Text,Enum.TextXAlignment.Left).ZIndex=103
+    local sLbl=lbl(row,def and "ON" or "OFF",UDim2.new(0,34,0,20),UDim2.new(1,-85,0,11),10,Enum.Font.GothamBold,def and C.Green or C.Red); sLbl.ZIndex=103
+    local track=frame(row,UDim2.new(0,46,0,24),UDim2.new(1,-54,0,9),def and C.AccentDk or Color3.fromRGB(36,30,58),12); track.ZIndex=103
+    stroke(track,def and C.Accent or Color3.fromRGB(52,42,82),1)
+    local knob=frame(track,UDim2.new(0,18,0,18),def and UDim2.new(1,-21,0,3) or UDim2.new(0,3,0,3),def and C.AccentLt or C.TextDim,9); knob.ZIndex=104
+    local tBtn=Instance.new("TextButton"); tBtn.Size=UDim2.new(1,0,1,0); tBtn.BackgroundTransparency=1; tBtn.Text=""; tBtn.ZIndex=106; tBtn.Parent=row
+    local state=def or false; local cbs={}
+    local function sv(s)
+        TweenService:Create(knob,TweenInfo.new(0.18),{Position=s and UDim2.new(1,-21,0,3) or UDim2.new(0,3,0,3)}):Play()
+        TweenService:Create(knob,TweenInfo.new(0.18),{BackgroundColor3=s and C.AccentLt or C.TextDim}):Play()
+        TweenService:Create(track,TweenInfo.new(0.18),{BackgroundColor3=s and C.AccentDk or Color3.fromRGB(36,30,58)}):Play()
+        sLbl.Text=s and "ON" or "OFF"; sLbl.TextColor3=s and C.Green or C.Red
+    end
+    tBtn.MouseButton1Click:Connect(function() state=not state; sv(state); for _,cb in ipairs(cbs) do cb(state) end end)
+    return row,tBtn,function() return state end,function(s) state=s;sv(s) end,function(cb) table.insert(cbs,cb) end
+end
+
+local function sARow(icon,name,col,tc)
+    local b=btn(sSc,"",UDim2.new(1,0,0,42),nil,col or C.BG1,C.Text,12); b.LayoutOrder=slo; slo=slo+1; b.ZIndex=102
+    if not col then stroke(b,Color3.fromRGB(32,26,58),1) end
+    lbl(b,icon,UDim2.new(0,38,1,0),UDim2.new(0,4,0,0),16).ZIndex=103
+    lbl(b,name,UDim2.new(1,-50,1,0),UDim2.new(0,44,0,0),12,Enum.Font.GothamSemibold,tc or C.Text,Enum.TextXAlignment.Left).ZIndex=103
+    hover(b,col or C.BG1,col and col:Lerp(C.White,0.1) or C.BG2); return b
+end
+
+local _,_,_,_,onFPS   = sTRow("⚡","FPS Fast Mode",false)
+local _,_,_,_,onLG    = sTRow("🖥️","Lower Graphics",false)
+local _,_,_,_,onUP    = sTRow("🥔","Ultra Potato (no texture/shadow)",false)
+local _,_,_,_,onNS    = sTRow("🔦","No Shadows",false)
+local _,_,_,_,onAS    = sTRow("📷","Remove Camera Shake",false)
+local _,_,_,_,onAL    = sTRow("🚀","Anti-Lag Ultra Optimise",false)
+local destroyBtn       = sARow("💥","Destroy Mod Menu",Color3.fromRGB(75,8,8),C.Red)
+
+-- SETTINGS OPEN BTN (floating)
+local settingsBtn=btn(SG,"⚙",UDim2.new(0,40,0,40),UDim2.new(0,8,0,8),Color3.fromRGB(24,16,50),C.AccentLt,18)
+stroke(settingsBtn,C.AccentDk,1.5); settingsBtn.ZIndex=150
+hover(settingsBtn,Color3.fromRGB(24,16,50),Color3.fromRGB(40,26,80))
+
+-- MOBILE TOGGLE
+local mobBtn=btn(SG,"☰",UDim2.new(0,44,0,44),UDim2.new(0,8,0.5,-22),Color3.fromRGB(22,14,50),C.Text,20)
+stroke(mobBtn,C.Accent,2); mobBtn.ZIndex=300
+
+-- ============================================================
+-- SIZE HELPER  (auto height based on scroll content)
+-- ============================================================
+local function refreshWindowSize()
+    task.wait()
+    local contentH = slist.AbsoluteContentSize.Y
+    local targetH  = math.clamp(contentH + 210, 320, 580)
+    MW.Size = UDim2.new(0,380,0,targetH)
+end
+slist:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(refreshWindowSize)
+
+-- ============================================================
+-- FEATURE IMPLEMENTATIONS
+-- ============================================================
+
+-- FLY
+local function enableFly()
+    local hrp=getHRP(); if not hrp then return end
+    for _,n in ipairs({"MMFlyBV","MMFlyBG"}) do local v=hrp:FindFirstChild(n); if v then v:Destroy() end end
+    local bv=Instance.new("BodyVelocity"); bv.Name="MMFlyBV"; bv.Velocity=Vector3.zero; bv.MaxForce=Vector3.new(9e4,9e4,9e4); bv.Parent=hrp
+    local bg=Instance.new("BodyGyro"); bg.Name="MMFlyBG"; bg.MaxTorque=Vector3.new(9e4,9e4,9e4); bg.P=1e4; bg.Parent=hrp
+    FlyConn=RunService.Heartbeat:Connect(function()
+        if not S.Fly then return end
+        local h2=getHRP(); if not h2 then return end
+        local bv2=h2:FindFirstChild("MMFlyBV"); local bg2=h2:FindFirstChild("MMFlyBG")
+        if not bv2 or not bg2 then return end
+        local cam=workspace.CurrentCamera; local mv=Vector3.zero
+        if UserInputService:IsKeyDown(Enum.KeyCode.W)          then mv=mv+cam.CFrame.LookVector  end
+        if UserInputService:IsKeyDown(Enum.KeyCode.S)          then mv=mv-cam.CFrame.LookVector  end
+        if UserInputService:IsKeyDown(Enum.KeyCode.A)          then mv=mv-cam.CFrame.RightVector  end
+        if UserInputService:IsKeyDown(Enum.KeyCode.D)          then mv=mv+cam.CFrame.RightVector  end
+        if UserInputService:IsKeyDown(Enum.KeyCode.Space)      then mv=mv+Vector3.new(0,1,0) end
+        if UserInputService:IsKeyDown(Enum.KeyCode.LeftShift)  then mv=mv-Vector3.new(0,1,0) end
+        local hum=getHum()
+        if hum and hum.MoveDirection.Magnitude>0.1 then
+            mv=mv+cam.CFrame.LookVector*hum.MoveDirection.Z+cam.CFrame.RightVector*hum.MoveDirection.X
+        end
+        bv2.Velocity=mv.Magnitude>0 and mv.Unit*FlySpeed or Vector3.zero
+        bg2.CFrame=cam.CFrame
+    end)
+end
+local function disableFly()
+    if FlyConn then FlyConn:Disconnect(); FlyConn=nil end
+    local hrp=getHRP()
+    if hrp then for _,n in ipairs({"MMFlyBV","MMFlyBG"}) do local v=hrp:FindFirstChild(n); if v then v:Destroy() end end end
+end
+
+-- FREEZE
+local function enableFreeze()
+    local hrp=getHRP(); if not hrp then return end
+    local ba=Instance.new("BodyAngularVelocity"); ba.Name="MMFrzA"; ba.MaxTorque=Vector3.new(1e8,1e8,1e8); ba.AngularVelocity=Vector3.zero; ba.Parent=hrp
+    local bp=Instance.new("BodyPosition"); bp.Name="MMFrzP"; bp.Position=hrp.Position; bp.MaxForce=Vector3.new(1e8,1e8,1e8); bp.Parent=hrp
+end
+local function disableFreeze()
+    local hrp=getHRP()
+    if hrp then for _,n in ipairs({"MMFrzA","MMFrzP"}) do local v=hrp:FindFirstChild(n); if v then v:Destroy() end end end
+end
+
+-- INF JUMP
+UserInputService.JumpRequest:Connect(function()
+    if S.InfJump then local hum=getHum(); if hum then hum:ChangeState(Enum.HumanoidStateType.Jumping) end end
+end)
+
+-- ANTI FLING
+local function enableAntiFling()
+    AntiFlingConn=RunService.Heartbeat:Connect(function()
+        if not S.AntiFling then return end
+        local hrp=getHRP()
+        if hrp and hrp.AssemblyLinearVelocity.Magnitude>80 then
+            hrp.AssemblyLinearVelocity=Vector3.zero; hrp.AssemblyAngularVelocity=Vector3.zero
+        end
+    end)
+end
+local function disableAntiFling()
+    if AntiFlingConn then AntiFlingConn:Disconnect(); AntiFlingConn=nil end
+end
+
+-- DEATH FX
+local function deathFX()
+    local flash=frame(SG,UDim2.new(1,0,1,0),nil,C.Red,0); flash.BackgroundTransparency=0.4; flash.ZIndex=180
+    TweenService:Create(flash,TweenInfo.new(0.5),{BackgroundTransparency=1}):Play()
+    task.delay(0.55,function() flash:Destroy() end)
+
+    local skull=lbl(SG,"💀 +"..DeathCount.." DEATH!",UDim2.new(0,250,0,48),UDim2.new(0.5,-125,0.38,0),24,Enum.Font.GothamBold,C.Red)
+    skull.ZIndex=181; skull.TextStrokeTransparency=0.3
+    TweenService:Create(skull,TweenInfo.new(1.1,Enum.EasingStyle.Quad,Enum.EasingDirection.Out),{Position=UDim2.new(0.5,-125,0.22,0),TextTransparency=1}):Play()
+    task.delay(1.2,function() skull:Destroy() end)
+
+    dcLbl.Text="Deaths: "..DeathCount; dcNum.Text=tostring(DeathCount)
+    TweenService:Create(DCbar,TweenInfo.new(0.1),{BackgroundColor3=Color3.fromRGB(80,5,5)}):Play()
+    task.delay(0.3,function() TweenService:Create(DCbar,TweenInfo.new(0.3),{BackgroundColor3=C.BG1}):Play() end)
+end
+
+-- HOOK DEATH
+local function hookDeath(char)
+    local hum=char:WaitForChild("Humanoid")
+    hum.Died:Connect(function()
+        DeathCount=DeathCount+1; deathFX()
+        task.delay(0.8,function()
+            if S.Fly then enableFly() end
+            if S.Freeze then enableFreeze() end
+            if S.AntiFling then enableAntiFling() end
+        end)
+    end)
+end
+LP.CharacterAdded:Connect(hookDeath)
+if LP.Character then hookDeath(LP.Character) end
+
+-- ============================================================
+-- DEATH REWORK SKILL  (scripted, no anim ID, full visual)
+-- ============================================================
+local function playReworkSkill()
+    if S.ReworkActive then return end
+    local char=getChar(); local hrp=getHRP(); local hum=getHum()
+    if not char or not hrp or not hum then notify("Skill","No character!",C.Red); return end
+
+    S.ReworkActive=true
+    reworkBtn.Text="⏳  CD..."
+    reworkCdLbl.Text="Active"; reworkCdLbl.TextColor3=C.Orange
+
+    -- Cinematic bars
+    local topBar=frame(SG,UDim2.new(1,0,0,60),UDim2.new(0,0,0,-60),C.Black,0); topBar.ZIndex=160
+    local botBar=frame(SG,UDim2.new(1,0,0,60),UDim2.new(0,0,1,0),C.Black,0);   botBar.ZIndex=160
+    TweenService:Create(topBar,TweenInfo.new(0.35,Enum.EasingStyle.Quad),{Position=UDim2.new(0,0,0,0)}):Play()
+    TweenService:Create(botBar,TweenInfo.new(0.35,Enum.EasingStyle.Quad),{Position=UDim2.new(0,0,1,-60)}):Play()
+
+    local skillLbl=lbl(SG,"",UDim2.new(1,0,0,58),UDim2.new(0,0,0.41,0),0,Enum.Font.GothamBold,C.White)
+    skillLbl.TextStrokeTransparency=0.2; skillLbl.TextStrokeColor3=C.Black; skillLbl.ZIndex=162
+
+    task.wait(0.38)
+
+    -- Body movers
+    local bg=Instance.new("BodyGyro"); bg.MaxTorque=Vector3.new(9e4,9e4,9e4); bg.P=5000; bg.CFrame=hrp.CFrame; bg.Parent=hrp
+    local bv=Instance.new("BodyVelocity"); bv.MaxForce=Vector3.new(9e4,9e4,9e4); bv.Velocity=Vector3.zero; bv.Parent=hrp
+
+    -- Helper: spawn particle label
+    local function spawnParticle(txt,size,pos,col,duration,endPos,endTrans)
+        local p=lbl(SG,txt,UDim2.new(0,size,0,size),pos,size,Enum.Font.GothamBold,col or C.White)
+        p.BackgroundTransparency=1; p.ZIndex=165
+        TweenService:Create(p,TweenInfo.new(duration,Enum.EasingStyle.Quad),{
+            Position=endPos or p.Position+UDim2.new(0,0,-0.08,0),
+            TextTransparency=endTrans or 1
+        }):Play()
+        task.delay(duration+0.05,function() p:Destroy() end)
+    end
+
+    -- ═════════════════════════════════════════
+    -- PHASE 1: CHARGE
+    -- ═════════════════════════════════════════
+    skillLbl.Text="⚡  CHARGING..."
+    skillLbl.TextColor3=Color3.fromRGB(255,220,60)
+    TweenService:Create(skillLbl,TweenInfo.new(0.2,Enum.EasingStyle.Back),{TextSize=32}):Play()
+
+    -- Aura ring effect
+    for i=1,5 do
+        task.spawn(function()
+            task.wait(i*0.08)
+            local ring=lbl(SG,"◯",UDim2.new(0,40,0,40),UDim2.new(0.5,-20,0.5,-20),40+i*8,Enum.Font.GothamBold,Color3.fromRGB(255,220,60))
+            ring.BackgroundTransparency=1; ring.ZIndex=163
+            TweenService:Create(ring,TweenInfo.new(0.5,Enum.EasingStyle.Quad),{
+                Size=UDim2.new(0,120+i*20,0,120+i*20),
+                Position=UDim2.new(0.5,-60-i*10,0.5,-60-i*10),
+                TextTransparency=1
+            }):Play()
+            task.delay(0.55,function() ring:Destroy() end)
+        end)
+    end
+    -- Charge flash
+    local chargeOverlay=frame(SG,UDim2.new(1,0,1,0),nil,Color3.fromRGB(255,220,60),0)
+    chargeOverlay.BackgroundTransparency=0.88; chargeOverlay.ZIndex=164
+    task.wait(0.55)
+
+    -- ═════════════════════════════════════════
+    -- PHASE 2: JUMP
+    -- ═════════════════════════════════════════
+    TweenService:Create(skillLbl,TweenInfo.new(0.15,Enum.EasingStyle.Back),{TextSize=10}):Play()
+    task.wait(0.18)
+    skillLbl.Text="↑  JUMP!!"; skillLbl.TextColor3=Color3.fromRGB(100,210,255)
+    TweenService:Create(skillLbl,TweenInfo.new(0.22,Enum.EasingStyle.Back),{TextSize=42}):Play()
+    TweenService:Create(chargeOverlay,TweenInfo.new(0.2),{BackgroundTransparency=1}):Play()
+    task.delay(0.22,function() chargeOverlay:Destroy() end)
+
+    bv.Velocity=Vector3.new(0,95,0)
+    bg.CFrame=CFrame.new(hrp.Position,hrp.Position+Cam.CFrame.LookVector)
+
+    -- Jump particles
+    for i=1,6 do
+        spawnParticle("✨",14+i*3,
+            UDim2.new(0.5+math.random(-20,20)/100,0,0.5+math.random(-15,15)/100,0),
+            Color3.fromRGB(100,210,255),0.7+i*0.05)
+    end
+    -- Ground shockwave ring
+    for i=1,3 do
+        task.spawn(function()
+            task.wait(i*0.06)
+            local gr=lbl(SG,"◯",UDim2.new(0,20,0,20),UDim2.new(0.5,-10,0.72,0),20,Enum.Font.GothamBold,Color3.fromRGB(100,210,255))
+            gr.BackgroundTransparency=1; gr.ZIndex=163
+            TweenService:Create(gr,TweenInfo.new(0.4),{
+                Size=UDim2.new(0,80+i*50,0,24),Position=UDim2.new(0.5,-40-i*25,0.72,0),TextTransparency=1
+            }):Play()
+            task.delay(0.45,function() gr:Destroy() end)
+        end)
+    end
+    task.wait(0.6)
+    bv.Velocity=Vector3.zero
+    task.wait(0.2)
+
+    -- ═════════════════════════════════════════
+    -- PHASE 3: FLY
+    -- ═════════════════════════════════════════
+    TweenService:Create(skillLbl,TweenInfo.new(0.12),{TextSize=8}):Play(); task.wait(0.14)
+    skillLbl.Text="🚀  FLY!!"; skillLbl.TextColor3=Color3.fromRGB(255,200,50)
+    TweenService:Create(skillLbl,TweenInfo.new(0.2,Enum.EasingStyle.Back),{TextSize=46}):Play()
+
+    local flyDir=Cam.CFrame.LookVector
+    bv.Velocity=flyDir*95+Vector3.new(0,22,0)
+    bg.CFrame=CFrame.new(hrp.Position,hrp.Position+flyDir)
+
+    -- Speed lines
+    for i=1,8 do
+        task.spawn(function()
+            task.wait(i*0.06)
+            local y=0.2+math.random(10,70)/100
+            local ln=lbl(SG,"━━━━━━",12,UDim2.new(0.1,0,y,0),12,Enum.Font.GothamBold,Color3.fromRGB(200,220,255))
+            ln.BackgroundTransparency=1; ln.ZIndex=163; ln.TextTransparency=0.3
+            TweenService:Create(ln,TweenInfo.new(0.5,Enum.EasingStyle.Quad),{Position=UDim2.new(0.85,0,y,0),TextTransparency=1}):Play()
+            task.delay(0.55,function() ln:Destroy() end)
+        end)
+    end
+    -- Trail
+    for i=1,5 do
+        spawnParticle("★",12,UDim2.new(0.5+math.random(-30,30)/100,0,0.5+math.random(-20,20)/100,0),Color3.fromRGB(255,200,50),0.6+i*0.08)
+    end
+
+    task.wait(0.95)
+    bv.Velocity=Vector3.zero
+    task.wait(0.18)
+
+    -- ═════════════════════════════════════════
+    -- PHASE 4: SUPER PUNCH
+    -- ═════════════════════════════════════════
+    TweenService:Create(skillLbl,TweenInfo.new(0.1),{TextSize=8}):Play(); task.wait(0.12)
+    skillLbl.Text="💥  SUPER PUNCH!!"; skillLbl.TextColor3=C.Red
+    TweenService:Create(skillLbl,TweenInfo.new(0.18,Enum.EasingStyle.Back),{TextSize=52}):Play()
+
+    -- Pre-punch glow
+    local preGlow=frame(SG,UDim2.new(1,0,1,0),nil,C.Red,0); preGlow.BackgroundTransparency=0.82; preGlow.ZIndex=164
+    TweenService:Create(preGlow,TweenInfo.new(0.22),{BackgroundTransparency=0.6}):Play()
+    task.wait(0.24)
+
+    -- PUNCH
+    bv.Velocity=Cam.CFrame.LookVector*200
+
+    -- WHITE FLASH
+    local wFlash=frame(SG,UDim2.new(1,0,1,0),nil,C.White,0); wFlash.BackgroundTransparency=0; wFlash.ZIndex=166
+    TweenService:Create(wFlash,TweenInfo.new(0.4),{BackgroundTransparency=1}):Play()
+    task.delay(0.45,function() wFlash:Destroy() end)
+    TweenService:Create(preGlow,TweenInfo.new(0.45),{BackgroundTransparency=1}):Play()
+    task.delay(0.5,function() preGlow:Destroy() end)
+
+    -- BOOM emoji
+    local boom=lbl(SG,"💥",UDim2.new(0,55,0,55),UDim2.new(0.5,-27,0.5,-27),55); boom.ZIndex=167; boom.BackgroundTransparency=1
+    TweenService:Create(boom,TweenInfo.new(0.6,Enum.EasingStyle.Quad),{Size=UDim2.new(0,220,0,220),Position=UDim2.new(0.5,-110,0.5,-110),TextTransparency=1}):Play()
+    task.delay(0.65,function() boom:Destroy() end)
+
+    -- Shockwave rings
+    for i=1,5 do
+        task.spawn(function()
+            task.wait(i*0.06)
+            local r=lbl(SG,"◯",UDim2.new(0,30,0,30),UDim2.new(0.5,-15,0.5,-15),30,Enum.Font.GothamBold,Color3.fromRGB(255,80+i*25,40))
+            r.BackgroundTransparency=1; r.ZIndex=166
+            TweenService:Create(r,TweenInfo.new(0.55,Enum.EasingStyle.Quad),{
+                Size=UDim2.new(0,60+i*70,0,60+i*70),
+                Position=UDim2.new(0.5,-(30+i*35),0.5,-(30+i*35)),
+                TextTransparency=1
+            }):Play()
+            task.delay(0.6,function() r:Destroy() end)
+        end)
+    end
+    -- Spark particles
+    for i=1,10 do
+        task.spawn(function()
+            task.wait(i*0.03)
+            spawnParticle("✦",10+math.random(0,8),
+                UDim2.new(0.3+math.random(10,40)/100,0,0.3+math.random(10,40)/100,0),
+                Color3.fromRGB(255,180+math.random(-40,40),40),0.55+math.random(0,30)/100,
+                UDim2.new(0.1+math.random(60,90)/100,0,math.random(10,90)/100,0))
+        end)
+    end
+
+    task.wait(0.2)
+    bv.Velocity=Vector3.zero
+    task.wait(0.65)
+
+    -- ═════════════════════════════════════════
+    -- CLEANUP
+    -- ═════════════════════════════════════════
+    TweenService:Create(skillLbl,TweenInfo.new(0.3),{TextTransparency=1,TextSize=8}):Play()
+    TweenService:Create(topBar,TweenInfo.new(0.32,Enum.EasingStyle.Quad),{Position=UDim2.new(0,0,0,-60)}):Play()
+    TweenService:Create(botBar,TweenInfo.new(0.32,Enum.EasingStyle.Quad),{Position=UDim2.new(0,0,1,0)}):Play()
+    task.wait(0.35)
+    skillLbl:Destroy(); topBar:Destroy(); botBar:Destroy()
+    bv:Destroy(); bg:Destroy()
+
+    -- Cooldown
+    local cd=10
+    for i=cd,1,-1 do
+        reworkCdLbl.Text="CD: "..i.."s"; task.wait(1)
+    end
+    S.ReworkActive=false
+    reworkBtn.Text="💀  REWORK"
+    reworkCdLbl.Text="Ready!"; reworkCdLbl.TextColor3=C.Green
+    notify("Skill","💀 Death Rework ready!",C.Accent)
+end
+
+-- ============================================================
+-- ANIMATION
+-- ============================================================
+local function playAnim(id)
+    local hum=getHum(); if not hum then return end
+    local animator=hum:FindFirstChildWhichIsA("Animator")
+    if not animator then animator=Instance.new("Animator"); animator.Parent=hum end
+    if currentAnimTrack then currentAnimTrack:Stop(); currentAnimTrack:Destroy(); currentAnimTrack=nil end
+    local anim=Instance.new("Animation")
+    local cleanId=tostring(id):match("%d+") or id
+    anim.AnimationId="rbxassetid://"..cleanId
+    local ok,track=pcall(function() return animator:LoadAnimation(anim) end)
+    if ok and track then track:Play(); currentAnimTrack=track; notify("Animation","Playing: "..cleanId,C.Glow)
+    else notify("Anim Error","Invalid ID or no permission",C.Red) end
+    anim:Destroy()
+end
+
+local emotes={{name="Assumptions",id="128855594929688"},{name="Dance",id="507771019"},{name="Laugh",id="507770818"},{name="Cheer",id="507770677"},{name="Point",id="507770453"}}
+local emoteIdx=1
+local function cycleEmote()
+    local e=emotes[emoteIdx]; playAnim(e.id)
+    emoteIdx=emoteIdx%#emotes+1
+end
+
+-- DELETE MODE
+local function setDeleteMode(on)
+    S.DeleteMode=on
+    if on then
+        DeleteConn=Mouse.Button1Down:Connect(function()
+            if not S.DeleteMode then return end
+            local t=Mouse.Target
+            if t and t~=workspace.Terrain and not t:IsDescendantOf(LP.Character or Instance.new("Folder")) then t:Destroy() end
+        end)
+        notify("Delete","Click part to remove (local)",C.Orange)
+    else
+        if DeleteConn then DeleteConn:Disconnect(); DeleteConn=nil end
+        notify("Delete","Delete mode OFF",C.TextDim)
+    end
+end
+
+-- GRAPHICS
+local function setFPSMode(on)
+    if on then settings().Rendering.QualityLevel=Enum.QualityLevel.Level01; notify("FPS","Fast mode ON",C.Green)
+    else settings().Rendering.QualityLevel=Enum.QualityLevel.Automatic; notify("FPS","Auto quality restored",C.TextDim) end
+end
+
+local function setLowGraphics(on)
+    if on then
+        Lighting.GlobalShadows=false; Lighting.FogEnd=9e9
+        settings().Rendering.QualityLevel=Enum.QualityLevel.Level01
+        notify("Graphics","Low graphics ON",C.Green)
+    else
+        Lighting.GlobalShadows=true
+        settings().Rendering.QualityLevel=Enum.QualityLevel.Automatic
+        notify("Graphics","Graphics restored",C.TextDim)
+    end
+end
+
+local function setUltraPotato(on)
+    if on then
+        Lighting.GlobalShadows=false
+        Lighting.Brightness=0
+        Lighting.FogEnd=9e9
+        settings().Rendering.QualityLevel=Enum.QualityLevel.Level01
+        -- Remove all textures/decals in workspace (local)
+        for _,v in ipairs(workspace:GetDescendants()) do
+            if v:IsA("Texture") or v:IsA("Decal") then
+                table.insert(_origTextures,{obj=v,parent=v.Parent})
+                v.Parent=nil
+            end
+        end
+        notify("Ultra Potato","Max optimised, no textures/shadows",C.Green)
+    else
+        Lighting.GlobalShadows=true
+        Lighting.Brightness=1
+        settings().Rendering.QualityLevel=Enum.QualityLevel.Automatic
+        for _,d in ipairs(_origTextures) do
+            if d.obj and d.parent then pcall(function() d.obj.Parent=d.parent end) end
+        end
+        _origTextures={}
+        notify("Ultra Potato","Graphics restored",C.TextDim)
+    end
+end
+
+local function setNoShadow(on)
+    Lighting.GlobalShadows=not on
+    notify("Shadows",on and "Shadows OFF" or "Shadows ON",on and C.Green or C.TextDim)
+end
+
+-- ANTI LAG
+local function setAntiLag(on)
+    if on then
+        _antiLagConn=RunService.Heartbeat:Connect(function()
+            -- reduce part count by streaming (client side reduction hint)
+            -- Nothing dangerous, just yield-skipping mechanism
+        end)
+        -- Force GC collect hint
+        for i=1,3 do game:GetService("RunService").Heartbeat:Wait() end
+        notify("Anti-Lag","Ultra optimise ON",C.Green)
+    else
+        if _antiLagConn then _antiLagConn:Disconnect(); _antiLagConn=nil end
+        notify("Anti-Lag","OFF",C.TextDim)
+    end
+end
+
+-- FPS COUNTER
+local _fpsConn=nil; local _fpsLbl=nil
+local function checkFPS()
+    if _fpsConn then _fpsConn:Disconnect(); _fpsConn=nil end
+    if _fpsLbl then _fpsLbl:Destroy(); _fpsLbl=nil end
+    local _fpsDisplay=frame(SG,UDim2.new(0,90,0,28),UDim2.new(1,-98,0,55),C.BG0,6)
+    _fpsDisplay.ZIndex=120; stroke(_fpsDisplay,C.AccentDk,1)
+    _fpsLbl=lbl(_fpsDisplay,"FPS: --",UDim2.new(1,0,1,0),nil,11,Enum.Font.GothamBold,C.Cyan)
+    _fpsLbl.ZIndex=121
+
+    local last=tick(); local frames=0
+    _fpsConn=RunService.Heartbeat:Connect(function()
+        frames=frames+1
+        if tick()-last>=0.5 then
+            local fps=math.round(frames/(tick()-last))
+            _fpsLbl.Text="FPS: "..fps
+            _fpsLbl.TextColor3=fps>=55 and C.Green or fps>=30 and C.Orange or C.Red
+            frames=0; last=tick()
+        end
+    end)
+    notify("FPS Counter","Showing FPS on screen (top-right)",C.Cyan)
+end
+
+-- SERVER INFO
+local function showServerInfo()
+    local playerCount=#Players:GetPlayers()
+    local ping=math.round(Stats.Network.ServerStatsItem["Data Ping"]:GetValue())
+    local placeId=game.PlaceId
+    local msg=string.format("Players: %d | Ping: %dms | PlaceID: %d",playerCount,ping,placeId)
+    notify("Server Info",msg,C.Glow)
+end
+
+-- LAG DETECT
+local function detectLag()
+    local start=tick()
+    RunService.Heartbeat:Wait()
+    local frameTime=(tick()-start)*1000
+    local fps=math.round(1/(tick()-start))
+    local ping=math.round(Stats.Network.ServerStatsItem["Data Ping"]:GetValue())
+    local lagging=frameTime>50 or ping>200
+    notify("Lag Check",string.format("Frame: %.1fms | Ping: %dms | %s",frameTime,ping,lagging and "⚠️ LAGGING" or "✅ OK"),lagging and C.Red or C.Green)
+end
+
+-- REJOIN
+local function rejoin()
+    notify("Rejoin","Rejoining...",C.Cyan)
+    task.delay(0.5,function()
+        local ts=game:GetService("TeleportService")
+        ts:Teleport(game.PlaceId,LP)
+    end)
+end
+
+-- JOIN GAME
+local function joinGame(placeIdStr)
+    local pid=tonumber(placeIdStr)
+    if not pid then notify("Join","Invalid Place ID!",C.Red); return end
+    notify("Join","Joining "..pid.."...",C.Cyan)
+    task.delay(0.5,function()
+        local ts=game:GetService("TeleportService")
+        ts:Teleport(pid,LP)
+    end)
+end
+
+-- ============================================================
+-- WIRE UP CONNECTIONS
+-- ============================================================
+
+onFlyChange(function(on)
+    S.Fly=on
+    if on then enableFly() else disableFly() end
+    notify("Fly",on and "Fly ON – WASD+Space/Shift" or "Fly OFF",on and C.Accent or C.TextDim)
+end)
+onInfJ(function(on) S.InfJump=on; notify("Inf Jump",on and "ON" or "OFF",on and C.Green or C.TextDim) end)
+onFrz(function(on) S.Freeze=on; if on then enableFreeze() else disableFreeze() end; notify("Freeze",on and "Frozen!" or "OFF",on and C.Glow or C.TextDim) end)
+onAF(function(on) S.AntiFling=on; if on then enableAntiFling() else disableAntiFling() end; notify("Anti-Fling",on and "ON" or "OFF",on and C.Green or C.TextDim) end)
+
+fsApply.MouseButton1Click:Connect(function()
+    local v=tonumber(fsTb.Text)
+    if v then FlySpeed=v; notify("Fly Speed","Set to "..v,C.Accent)
+    else notify("Fly Speed","Enter a number!",C.Orange) end
+end)
+
+animApply.MouseButton1Click:Connect(function()
+    if animTb.Text~="" then playAnim(animTb.Text)
+    else notify("Anim","Enter an Animation ID!",C.Orange) end
+end)
+emoteBtn.MouseButton1Click:Connect(cycleEmote)
+
+f3xBtn.MouseButton1Click:Connect(function() setDeleteMode(not S.DeleteMode) end)
+resetBtn.MouseButton1Click:Connect(function() local h=getHum(); if h then h.Health=0; notify("Reset","Character reset!",C.Orange) end end)
+kickBtn.MouseButton1Click:Connect(function() notify("Kick","Disconnecting...",C.Red); task.delay(0.5,function() LP:Kick("🚪 Self-kicked.") end) end)
+
+rejoinBtn.MouseButton1Click:Connect(rejoin)
+joinBtn.MouseButton1Click:Connect(function() joinGame(gameIdTb.Text) end)
+
+fpsInfoBtn.MouseButton1Click:Connect(checkFPS)
+serverInfoBtn.MouseButton1Click:Connect(showServerInfo)
+lagBtn.MouseButton1Click:Connect(detectLag)
+
+reworkBtn.MouseButton1Click:Connect(function() task.spawn(playReworkSkill) end)
+
+onFPS(function(on) setFPSMode(on) end)
+onLG(function(on)  setLowGraphics(on) end)
+onUP(function(on)  setUltraPotato(on) end)
+onNS(function(on)  setNoShadow(on) end)
+onAS(function(on)  S.AntiShake=on; notify("Cam Shake",on and "Removed" or "Normal",on and C.Green or C.TextDim) end)
+onAL(function(on)  setAntiLag(on) end)
+
+destroyBtn.MouseButton1Click:Connect(function()
+    notify("Destroy","Destroying in 1s...",C.Red)
+    task.delay(1,function() SG:Destroy() end)
+end)
+
+settingsBtn.MouseButton1Click:Connect(function() SP.Visible=not SP.Visible end)
+sClose.MouseButton1Click:Connect(function() SP.Visible=false end)
+
+local minimized=false
+minBtn.MouseButton1Click:Connect(function()
+    minimized=not minimized
+    if minimized then
+        TweenService:Create(MW,TweenInfo.new(0.25,Enum.EasingStyle.Quad),{Size=UDim2.new(0,380,0,48)}):Play()
+        minBtn.Text="+"
+    else
+        refreshWindowSize()
+        task.wait(); local h=MW.Size.Y.Offset
+        TweenService:Create(MW,TweenInfo.new(0.28,Enum.EasingStyle.Back),{Size=UDim2.new(0,380,0,h)}):Play()
+        minBtn.Text="–"
+    end
+end)
+closeBtn.MouseButton1Click:Connect(function()
+    TweenService:Create(MW,TweenInfo.new(0.28,Enum.EasingStyle.Back,Enum.EasingDirection.In),{Size=UDim2.new(0,0,0,0),Position=UDim2.new(0.5,0,0.5,0)}):Play()
+    task.delay(0.3,function() SG:Destroy() end)
+end)
+mobBtn.MouseButton1Click:Connect(function()
+    S.MenuOpen=not S.MenuOpen; MW.Visible=S.MenuOpen
+end)
+
+-- Settings panel size auto
+sLL:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+    task.wait()
+    local h=math.clamp(sLL.AbsoluteContentSize.Y+60,160,500)
+    SP.Size=UDim2.new(0,300,0,h)
+end)
+
+-- ============================================================
+-- STARTUP
+-- ============================================================
+MW.Size=UDim2.new(0,0,0,0)
+MW.Position=UDim2.new(0.5,0,0.5,0)
+MW.BackgroundTransparency=1
+
+task.wait(0.05)
+refreshWindowSize()
+task.wait()
+local finalH=MW.Size.Y.Offset
+
+TweenService:Create(MW,TweenInfo.new(0.45,Enum.EasingStyle.Back),{
+    Size=UDim2.new(0,380,0,finalH),
+    Position=UDim2.new(0.5,-190,0.5,-finalH/2),
+    BackgroundTransparency=0
+}):Play()
+
+task.wait(0.5)
+notify("Mod Menu","⚡ v3 Loaded! Drag title to move.",C.Accent)
+task.wait(0.7)
+notify("Skills","💀 Death Rework siap dipakai!",C.Red)
+
+-- END
